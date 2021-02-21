@@ -11,6 +11,8 @@ _FRAME_RATE = 1/60 # 60 FPS
 
 _RANDOM_SPEED_RANGE = (3, 6)
 
+_LINE_SPACING = 20
+
 class _AboutText:
 
     def __init__(self, font, text=""):
@@ -110,11 +112,12 @@ class AboutPanel(wx.Panel):
         for line in self._text:
             line.define_size(dc)
             line.x = 0 - line.width
-        lines_height = line.height * len(self._text)
+        # define the Y starting position
+        lines_height = (line.height * len(self._text)) + (_LINE_SPACING * len(self._text))
         starting_y = round((self._height/2) - (lines_height/2))
         for line in self._text:
             line.y = starting_y
-            starting_y += line.height
+            starting_y = starting_y + line.height + _LINE_SPACING
     
     def _on_paint(self, evt):
         dc = wx.PaintDC(self)
