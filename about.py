@@ -31,6 +31,16 @@ def _define_size(abouttext, dc):
     width, height = dc.Size
     abouttext.max_x = round(int(width/2) - int(abouttext.width/2))
 
+@dataclass
+class CoolEffect:
+
+    x: int = 0
+    y: int = 0
+    width: int = 20
+    height: int = 0
+    colour: wx.Colour = None
+    velocity: int = 2
+
 
 class AnimatedDialog(wx.Dialog):
 
@@ -94,6 +104,8 @@ class AboutPanel(wx.Panel):
 
         self._lines = namedtuple("TextGroup", ["name", "author", "description", "version"])(*lines)
 
+        self._cooleffect = CoolEffect(colour=wx.Colour(0, 0, 0, 10))
+
         self.Bind(wx.EVT_PAINT, self._on_paint, self)
         self.Bind(wx.EVT_SIZE, self._on_size, self)
     
@@ -121,6 +133,13 @@ class AboutPanel(wx.Panel):
         for line in self._lines:
             line.y = starting_y
             starting_y = starting_y + line.height + _LINE_SPACING
+        
+        # cooleffect
+        self._cooleffect.height = lines_height + 20
+        line_widths = list(map(lambda line : line.width, self._lines))
+        self._cooleffect.width = max(line_widths)
+        self._cooleffect.y = round((self._height/2) - (self._cooleffect.height/2))
+        self._cooleffect.x = self._width
     
     def _on_paint(self, evt):
         dc = wx.PaintDC(self)
@@ -130,6 +149,10 @@ class AboutPanel(wx.Panel):
         for line in self._lines:
             if line.x < line.max_x:
                 line.x += line.velocity
+        
+        if self._cooleffect.x < -self._cooleffect.width:
+            self._cooleffect.x = self._width
+        self._cooleffect.x -= self._cooleffect.velocity
         
     def _animation_loop(self):
         quit = threading.Event()
@@ -157,6 +180,11 @@ class AboutPanel(wx.Panel):
         dc.SetBrush(wx.WHITE_BRUSH)
         dc.SetPen(wx.WHITE_PEN)
         dc.DrawRectangle(0, 0, self._width, self._height)
+        # Draw the cooleffect
+        dc.SetBrush(wx.Brush(self._cooleffect.colour))
+        dc.SetPen(wx.Pen(self._cooleffect.colour))
+        dc.DrawRectangle(self._cooleffect.x, self._cooleffect.y, 
+                         self._cooleffect.width, self._cooleffect.height)
         dc.SetBrush(wx.BLACK_BRUSH)
         dc.SetPen(wx.BLACK_PEN)
         # draw text here
