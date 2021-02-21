@@ -3,43 +3,56 @@ import threading
 import queue
 from collections import namedtuple
 from dataclasses import dataclass
-import random
 
 # set the frame rate
 _FRAME_RATE = 1/60 # 60 FPS
 
-# speed range at the veolicty rate the text will scroll at
-_RANDOM_SPEED_RANGE = (3, 6)
-
 # defines the spacing between the lines
 _LINE_SPACING = 20
 
+def _define_size(abouttext, dc):
+    """gets the size of the line in pixel count and sets maximum scoll x
+
+    Args:
+        abouttext (object): Is a LineText object
+        dc (object): The Device Context to be used to define the size of the text
+    """
+    text_size = dc.GetFullTextExtent(abouttext.text, abouttext.font)
+    abouttext.width, abouttext.height = (text_size[0], text_size[1])
+    width, height = dc.Size
+    abouttext.max_x = round(int(width/2) - int(abouttext.width/2))
+
+
 @dataclass
 class LineText:
+    """coords and properties for the line text being scrolled
+    """
     x: int = 0
     y: int = 0
     width: int = 0
     height: int = 0
     text: str = ''
     max_x: int = 0
-    velocity: int = 1
+    velocity: int = 5
     font: wx.Font = None
-    
-def _define_size(abouttext, dc):
-    text_size = dc.GetFullTextExtent(abouttext.text, abouttext.font)
-    abouttext.width, abouttext.height = (text_size[0], text_size[1])
-    width, height = dc.Size
-    abouttext.max_x = round(int(width/2) - int(abouttext.width/2))
+    finished_scrolling: bool = False
+
 
 @dataclass
 class CoolEffect:
+
+    """this holds the rect coords, colour and scrolling variables for the scrolling rectangle
+    """
 
     x: int = 0
     y: int = 0
     width: int = 20
     height: int = 0
+    min_x: int = 0
     colour: wx.Colour = None
-    velocity: int = 2
+    border: wx.Colour = None
+    velocity: int = 6
+    finished_scrolling: bool = False
 
 
 class AnimatedDialog(wx.Dialog):
@@ -96,26 +109,37 @@ class AboutPanel(wx.Panel):
         faceName="arial", encoding=wx.FONTENCODING_DEFAULT)
 
         lines = (
-            LineText(font=h1_font, text=text[0], velocity=random.randint(*_RANDOM_SPEED_RANGE)),
-            LineText(font=h2_font, text=f"Developed by {text[1]}", velocity=random.randint(*_RANDOM_SPEED_RANGE)),
-            LineText(font=h2_font, text=text[2], velocity=random.randint(*_RANDOM_SPEED_RANGE)),
-            LineText(font=h2_font, text=f"Version - {text[3]}", velocity=random.randint(*_RANDOM_SPEED_RANGE))
+            LineText(font=h1_font, text=text[0]),
+            LineText(font=h2_font, text=f"Developed by {text[1]}"),
+            LineText(font=h2_font, text=text[2]),
+            LineText(font=h2_font, text=f"Version - {text[3]}")
         )
 
         self._lines = namedtuple("TextGroup", ["name", "author", "description", "version"])(*lines)
 
-        self._cooleffect = CoolEffect(colour=wx.Colour(0, 0, 0, 10))
+        self._cooleffect = CoolEffect(colour=wx.Colour(0, 0, 0, 10),
+                                      border=wx.Colour(0, 0, 0, 100))
 
         self.Bind(wx.EVT_PAINT, self._on_paint, self)
         self.Bind(wx.EVT_SIZE, self._on_size, self)
     
     def start_animation(self, evt):
+        """Start the animation thread and creates an atomic queue
+
+        Args:
+            evt (object): Event object from a button 
+        """
         self._queue = queue.Queue()
         self._thread = threading.Thread(target=self._animation_loop)
         self._thread.start()
         evt.Skip()
     
     def stop_animation(self, evt):
+        """kills the thread if its still alive when the dialog is closed
+
+        Args:
+            evt ([type]): not used
+        """
         if self._thread.is_alive():
             self._queue.put("quit")
         evt.Skip()
@@ -138,6 +162,7 @@ class AboutPanel(wx.Panel):
         self._cooleffect.height = lines_height + 20
         line_widths = list(map(lambda line : line.width, self._lines))
         self._cooleffect.width = max(line_widths)
+        self._cooleffect.min_x = round((self._width/2) - (self._cooleffect.width/2))
         self._cooleffect.y = round((self._height/2) - (self._cooleffect.height/2))
         self._cooleffect.x = self._width
     
@@ -146,13 +171,20 @@ class AboutPanel(wx.Panel):
         dc.DrawBitmap(self._buffer, 0, 0)
     
     def _update_positions(self):
+        lines_still_scrolling = list(filter(lambda line : not line.finished_scrolling, self._lines))
+        if not lines_still_scrolling and self._cooleffect.finished_scrolling:
+            self._queue.put("quit")
+
         for line in self._lines:
             if line.x < line.max_x:
                 line.x += line.velocity
+            else:
+                line.finished_scrolling = True
         
-        if self._cooleffect.x < -self._cooleffect.width:
-            self._cooleffect.x = self._width
-        self._cooleffect.x -= self._cooleffect.velocity
+        if self._cooleffect.x > self._cooleffect.min_x:
+            self._cooleffect.x -= self._cooleffect.velocity
+        else:
+            self._cooleffect.finished_scrolling = True
         
     def _animation_loop(self):
         quit = threading.Event()
@@ -164,6 +196,7 @@ class AboutPanel(wx.Panel):
             except queue.Empty:
                 # update next frame animation
                 wx.CallAfter(self._update_frame)
+        wx.CallAfter(self._update_frame)
     
     def _update_frame(self):
         self._update_positions()
@@ -182,7 +215,7 @@ class AboutPanel(wx.Panel):
         dc.DrawRectangle(0, 0, self._width, self._height)
         # Draw the cooleffect
         dc.SetBrush(wx.Brush(self._cooleffect.colour))
-        dc.SetPen(wx.Pen(self._cooleffect.colour))
+        dc.SetPen(wx.Pen(self._cooleffect.border, width=2))
         dc.DrawRectangle(self._cooleffect.x, self._cooleffect.y, 
                          self._cooleffect.width, self._cooleffect.height)
         dc.SetBrush(wx.BLACK_BRUSH)
