@@ -146,7 +146,7 @@ class AboutPanel(wx.Panel):
         self._update_positions()
         dc = wx.MemoryDC()
         dc.SelectObject(self._buffer)
-        self._draw(dc)
+        self._draw(wx.GCDC(dc))
         del dc
         self.Refresh()
         self.Update()
