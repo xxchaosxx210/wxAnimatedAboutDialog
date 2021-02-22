@@ -1,5 +1,3 @@
-import wx
-
 cdef class C_LineText:
     cdef public int x
     cdef public int y

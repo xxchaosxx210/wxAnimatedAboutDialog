@@ -8,6 +8,7 @@ from dataclasses import dataclass
 # Import our C compiled classes
 from about_c import C_LineText as LineText
 from about_c import C_BackgroundBox as CoolEffect
+# from about_c import define_size as _define_size
 
 _Log = logging.getLogger(__name__)
 
