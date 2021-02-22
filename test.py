@@ -25,6 +25,8 @@ class SimpleTestFrame(wx.Frame):
 
 
 def _test():
+    import logging
+    logging.basicConfig(level="INFO")
     app = wx.App()
     frame = SimpleTestFrame()
     frame.Show()
