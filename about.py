@@ -5,8 +5,8 @@ from collections import namedtuple
 
 if os.name == "nt":
     # Import our C compiled classes
-    from gui.about_c import C_LineText as LineText
-    from gui.about_c import C_BackgroundBox as CoolEffect
+    from about_c import C_LineText as LineText
+    from about_c import C_BackgroundBox as CoolEffect
 
 _Log = logging.getLogger(__name__)
 
