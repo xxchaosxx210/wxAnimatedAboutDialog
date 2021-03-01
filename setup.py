@@ -1,4 +1,7 @@
 from setuptools import setup
-from Cython.Build import cythonize
+from distutils.extension import Extension
+from Cython.Distutils import build_ext
 
-setup(ext_modules=cythonize("about_c.pyx"))
+ext = Extension("about_c", sources=["about_c.pyx"])
+
+setup(ext_modules=[ext], cmdclass={"build_ext": build_ext})

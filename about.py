@@ -1,14 +1,12 @@
 import wx
-import threading
-import queue
+import os
 import logging
 from collections import namedtuple
-from dataclasses import dataclass
 
-# Import our C compiled classes
-from about_c import C_LineText as LineText
-from about_c import C_BackgroundBox as CoolEffect
-# from about_c import define_size as _define_size
+if os.name == "nt":
+    # Import our C compiled classes
+    from gui.about_c import C_LineText as LineText
+    from gui.about_c import C_BackgroundBox as CoolEffect
 
 _Log = logging.getLogger(__name__)
 
@@ -29,39 +27,7 @@ def _define_size(abouttext, dc):
     abouttext.width, abouttext.height = (text_size[0], text_size[1])
     width, height = dc.Size
     abouttext.max_x = round(int(width/2) - int(abouttext.width/2))
-
-
-# @dataclass
-# class LineText:
-#     """coords and properties for the line text being scrolled
-#     """
-#     x: int = 0
-#     y: int = 0
-#     width: int = 0
-#     height: int = 0
-#     text: str = ''
-#     max_x: int = 0
-#     velocity: int = 8
-#     font: wx.Font = None
-#     finished_scrolling: int = 0
-
-
-# @dataclass
-# class CoolEffect:
-
-#     """this holds the rect coords, colour and scrolling variables for the scrolling rectangle
-#     """
-
-#     x: int = 0
-#     y: int = 0
-#     width: int = 20
-#     height: int = 0
-#     min_x: int = 0
-#     colour: wx.Colour = None
-#     border: wx.Colour = None
-#     velocity: int = 7
-#     finished_scrolling: int = 0
-
+    
 
 class AnimatedDialog(wx.Dialog):
 
@@ -117,15 +83,15 @@ class AboutPanel(wx.Panel):
 
         h1_font = wx.Font(pointSize=16, family=wx.FONTFAMILY_DECORATIVE,
         style=wx.FONTSTYLE_MAX, weight=wx.FONTWEIGHT_MAX, underline=False,
-        faceName="arial", encoding=wx.FONTENCODING_DEFAULT)
+        faceName="Consolas", encoding=wx.FONTENCODING_DEFAULT)
 
         h2_font = wx.Font(pointSize=11, family=wx.FONTFAMILY_SCRIPT,
-        style=wx.FONTSTYLE_MAX, weight=wx.FONTWEIGHT_MAX, underline=False,
-        faceName="arial", encoding=wx.FONTENCODING_DEFAULT)
+        style=wx.FONTSTYLE_MAX, weight=wx.FONTWEIGHT_LIGHT, underline=False,
+        faceName="Consolas", encoding=wx.FONTENCODING_DEFAULT)
 
         h3_font = wx.Font(pointSize=9, family=wx.FONTFAMILY_SCRIPT,
-        style=wx.FONTSTYLE_MAX, weight=wx.FONTWEIGHT_MAX, underline=False,
-        faceName="arial", encoding=wx.FONTENCODING_DEFAULT)
+        style=wx.FONTSTYLE_MAX, weight=wx.FONTWEIGHT_LIGHT, underline=False,
+        faceName="Consolas", encoding=wx.FONTENCODING_DEFAULT)
 
         lines = (
             LineText(font=h1_font, text=text[0]),
@@ -141,6 +107,7 @@ class AboutPanel(wx.Panel):
 
         self.Bind(wx.EVT_PAINT, self._on_paint, self)
         self.Bind(wx.EVT_SIZE, self._on_size, self)
+        self.Bind(wx.EVT_TIMER, self._animation_loop)
     
     def _initialize_colours(self):
         colour = self.GetBackgroundColour()
@@ -148,25 +115,11 @@ class AboutPanel(wx.Panel):
         self._grad2_colour = wx.Colour(colour.red - 50, colour.blue - 50, colour.green - 50, colour.alpha)
     
     def start_animation(self, evt):
-        """Start the animation thread and creates an atomic queue
-
-        Args:
-            evt (object): Event object from a button 
-        """
-        self._queue = queue.Queue()
-        self._thread = threading.Thread(target=self._animation_loop)
-        self._thread.start()
-        evt.Skip()
+        self._timer = wx.Timer(self)
+        self._timer.Start(_FRAME_RATE)
     
     def stop_animation(self, evt):
-        """kills the thread if its still alive when the dialog is closed
-
-        Args:
-            evt ([type]): not used
-        """
-        if self._thread.is_alive():
-            self._queue.put("quit")
-        evt.Skip()
+        self._timer.Stop()
     
     def _create_buffer(self):
         self._buffer = wx.Bitmap()
@@ -206,9 +159,23 @@ class AboutPanel(wx.Panel):
         self._cooleffect.x = self._width
     
     def _on_paint(self, evt):
-        # this method gets called when Refresh is called
-        dc = wx.PaintDC(self)
-        dc.DrawBitmap(self._buffer, 0, 0)
+        dc = wx.BufferedPaintDC(self, self._buffer)
+        dc.Clear()
+        # Give a nice gradient fill for our background
+        dc.GradientFillLinear(self.GetRect(), 
+                              self._grad1_colour, self._grad2_colour, wx.TOP)
+        # Draw the background box
+        dc.SetBrush(wx.Brush(self._cooleffect.colour))
+        dc.SetPen(wx.Pen(self._cooleffect.border, width=2))
+        dc.DrawRectangle(self._cooleffect.x, self._cooleffect.y, 
+                         self._cooleffect.width, self._cooleffect.height)
+        # draw the lines
+        dc.SetBrush(wx.BLACK_BRUSH)
+        dc.SetPen(wx.BLACK_PEN)
+        for line in self._lines:
+            if line.text:
+                dc.SetFont(line.font)
+                dc.DrawText(line.text, line.x, line.y)
     
     def _update_positions(self):
         # Update the text lines and background box positions before rendering next frame
@@ -217,7 +184,7 @@ class AboutPanel(wx.Panel):
         lines_still_scrolling = list(filter(lambda line : line.finished_scrolling == 0, self._lines))
         if not lines_still_scrolling and self._cooleffect.finished_scrolling:
             # no more positions to alter, quit the frame loop
-            self._queue.put("quit")
+            self.stop_animation(None)
 
         # loop through lines of text increasing the x position to the right of the screen
         for line in self._lines:
@@ -235,51 +202,16 @@ class AboutPanel(wx.Panel):
         else:
             # box has stopped
             self._cooleffect.finished_scrolling = 1
-        
-    def _animation_loop(self):
-        quit = threading.Event()
-        counter = 0
-        while not quit.is_set():
-            try:
-                msg = self._queue.get(timeout=_FRAME_RATE)
-                if msg == "quit":
-                    quit.set()
-            except queue.Empty:
-                # update next frame animation
-                wx.CallAfter(self._update_frame)
-                counter += 1
-        # paint last frame before leaving
-        wx.CallAfter(self._update_frame)
-        _Log.info(f"Counter took {counter} Loops to complete animation")
+    
+    def _animation_loop(self, evt):
+        self._update_frame()
 
     def _update_frame(self):
         # may cause runtime error if dialog has been deleted
         try:
             # update our lines and box positions
             self._update_positions()
-            # draw to memory
-            dc = wx.BufferedDC()
-            dc.SelectObject(self._buffer)
-            self._draw(wx.GCDC(dc))
-            del dc
             # blit the screen
             self.Refresh()
         except RuntimeError as err:
             _Log.error(err.__str__())
-
-    def _draw(self, dc):
-        dc.Clear()
-        # Give a nice gradient fill for our background
-        dc.GradientFillLinear(self.GetRect(), 
-                              self._grad1_colour, self._grad2_colour, wx.TOP)
-        # Draw the background box
-        dc.SetBrush(wx.Brush(self._cooleffect.colour))
-        dc.SetPen(wx.Pen(self._cooleffect.border, width=2))
-        dc.DrawRectangle(self._cooleffect.x, self._cooleffect.y, 
-                         self._cooleffect.width, self._cooleffect.height)
-        # draw the lines
-        dc.SetBrush(wx.BLACK_BRUSH)
-        dc.SetPen(wx.BLACK_PEN)
-        for line in self._lines:
-            dc.SetFont(line.font)
-            dc.DrawText(line.text, line.x, line.y)
